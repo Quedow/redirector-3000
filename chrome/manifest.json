@@ -1,0 +1,25 @@
+{
+    "manifest_version": 3,
+    "name": "Redirector 3000",
+    "version": "1.0",
+    "description": "Replaces request URL parts according to custom rules.",
+    "permissions": [
+        "storage",
+        "declarativeNetRequest",
+        "declarativeNetRequestFeedback"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "service.js"
+    },
+    "options_page": "options.html",
+    "action": {
+        "default_title": "Redirector 3000"
+    },
+    "icons": {
+        "192": "icons/icon-192.png",
+        "512": "icons/icon-512.png"
+    }
+}
