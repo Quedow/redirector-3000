@@ -6,7 +6,8 @@
     "permissions": [
         "storage",
         "declarativeNetRequest",
-        "declarativeNetRequestFeedback"
+        "declarativeNetRequestFeedback",
+        "notifications"
     ],
     "host_permissions": [
         "<all_urls>"
@@ -14,9 +15,10 @@
     "background": {
         "service_worker": "service.js"
     },
-    "options_page": "options.html",
+    "options_page": "popup.html",
     "action": {
-        "default_title": "Redirector 3000"
+        "default_title": "Redirector 3000",
+        "default_popup": "popup.html"
     },
     "icons": {
         "192": "icons/icon-192.png",

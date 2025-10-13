@@ -1,19 +1,13 @@
 const api = typeof browser !== "undefined" ? browser : chrome;
 
-const { rules = [] } = await api.storage.local.get({ rules: [] });
+async function webRequestHandler(details) {
+    const { rules = [] } = await api.storage.local.get({ rules: [] });
 
-function webRequestHandler(details) {
     for (const rule of rules) {
         if (!rule.enabled) continue;
         try {
             const regex = new RegExp(rule.pattern);
             if (regex.test(details.url)) {
-                api.notifications.create({
-                    type: "basic",
-                    iconUrl: "icons/icon-128.png",
-                    title: "URL Redirected",
-                    message: `From:\n${details.url}\nTo:\n${newUrl}`
-                });
                 return { redirectUrl: details.url.replace(regex, rule.output) };
             }
         } catch(e) {
@@ -24,6 +18,8 @@ function webRequestHandler(details) {
 }
 
 async function rebuildRules() {
+    const { rules = [] } = await api.storage.local.get({ rules: [] });
+
     if (api.declarativeNetRequest) { // Chrome
         const existing = await api.declarativeNetRequest.getDynamicRules();
         const ids = existing.map(r => r.id);
@@ -59,6 +55,9 @@ async function rebuildRules() {
                 addRules: newRules,
             });
         }
+
+        api.declarativeNetRequest.onRuleMatchedDebug.removeListener(handleRuleMatch);
+        api.declarativeNetRequest.onRuleMatchedDebug.addListener(handleRuleMatch);
     } else if (api.webRequest) { // Firefox
         try {
             if (api.webRequest.onBeforeRequest.hasListener(webRequestHandler)) {
@@ -74,6 +73,16 @@ async function rebuildRules() {
             console.error(e);
         }
     }
+}
+
+function handleRuleMatch(info) {
+    const { request, rule } = info;
+    api.notifications.create({
+        type: "basic",
+        iconUrl: "./icons/icon-192.png",
+        title: "Redirection triggered",
+        message: `Url: ${request.url}`,
+    });
 }
 
 api.runtime.onInstalled.addListener(() => {

@@ -1,0 +1,11 @@
+{
+    "name": "redirector-3000",
+    "version": "1.0.0",
+    "scripts": {
+        "clean": "rmdir /S /Q build && mkdir build",
+        "build:chrome": "xcopy chrome build\\chrome /E /Y /I && xcopy shared build\\chrome /E /Y /I",
+        "build:firefox": "xcopy firefox build\\firefox /E /Y /I && xcopy shared build\\firefox /E /Y /I && powershell Compress-Archive -Path build\\firefox\\* -DestinationPath build\\firefox.zip -Force && powershell Remove-Item -Recurse -Force build\\firefox",
+        "build:all": "npm run clean && npm run build:chrome && npm run build:firefox"
+    }    
+  }
+  
