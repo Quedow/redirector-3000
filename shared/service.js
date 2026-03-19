@@ -1,37 +1,53 @@
 const api = typeof browser !== "undefined" ? browser : chrome;
+const isFirefox = typeof browser !== "undefined" && typeof browser.runtime?.getBrowserInfo === "function";
+let cachedRules = [];
 
-async function webRequestHandler(details) {
-    const { rules = [] } = await api.storage.local.get({ rules: [] });
-
-    for (const rule of rules) {
+function webRequestHandler(details) {
+    for (const rule of cachedRules) {
         if (!rule.enabled) continue;
         try {
             const regex = new RegExp(rule.pattern);
             if (regex.test(details.url)) {
-                return { redirectUrl: details.url.replace(regex, rule.output) };
+                const redirectUrl = details.url.replace(regex, rule.output);
+
+                api.notifications.create({
+                    type: "basic",
+                    iconUrl: "./icons/icon-192.png",
+                    title: "Redirection triggered",
+                    message: `Redirected:\nfrom: ${details.url}\nto: ${redirectUrl}`,
+                });
+
+                return { redirectUrl };
             }
-        } catch(e) {
+        } catch (e) {
             console.error(e);
         }
     }
     return {};
 }
 
+async function clearDynamicRules() {
+    if (!api.declarativeNetRequest) return;
+
+    const existing = await api.declarativeNetRequest.getDynamicRules();
+    const ids = existing.map((rule) => rule.id);
+
+    if (ids.length) {
+        await api.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: ids,
+            addRules: [],
+        });
+    }
+}
+
 async function rebuildRules() {
     const { rules = [] } = await api.storage.local.get({ rules: [] });
+    cachedRules = rules;
 
-    if (api.declarativeNetRequest) { // Chrome
-        const existing = await api.declarativeNetRequest.getDynamicRules();
-        const ids = existing.map(r => r.id);
-        
-        if (ids.length) {
-            await api.declarativeNetRequest.updateDynamicRules({
-                removeRuleIds: ids,
-                addRules: [],
-            });
-        }
+    if (!isFirefox && api.declarativeNetRequest) { // Chrome
+        await clearDynamicRules();
 
-        const newRules = rules.filter(rule => rule.enabled).map(rule => ({
+        const newRules = rules.filter((rule) => rule.enabled).map((rule) => ({
             id: rule.id,
             priority: 1,
             action: {
@@ -42,10 +58,7 @@ async function rebuildRules() {
             },
             condition: {
                 regexFilter: rule.pattern,
-                resourceTypes: [
-                    "main_frame","sub_frame","xmlhttprequest",
-                    "script","image","stylesheet","font","ping","other",
-                ],
+                resourceTypes: ["main_frame", "sub_frame"],
             },
         }));
 
@@ -56,27 +69,30 @@ async function rebuildRules() {
             });
         }
 
-        api.declarativeNetRequest.onRuleMatchedDebug.removeListener(handleRuleMatch);
-        api.declarativeNetRequest.onRuleMatchedDebug.addListener(handleRuleMatch);
+        if (api.declarativeNetRequest.onRuleMatchedDebug) {
+            api.declarativeNetRequest.onRuleMatchedDebug.removeListener(handleRuleMatch);
+            api.declarativeNetRequest.onRuleMatchedDebug.addListener(handleRuleMatch);
+        }
     } else if (api.webRequest) { // Firefox
         try {
+            await clearDynamicRules();
+
             if (api.webRequest.onBeforeRequest.hasListener(webRequestHandler)) {
                 api.webRequest.onBeforeRequest.removeListener(webRequestHandler);
             }
-
             api.webRequest.onBeforeRequest.addListener(
                 webRequestHandler,
                 { urls: ["<all_urls>"] },
                 ["blocking"]
             );
-        } catch(e) {
+        } catch (e) {
             console.error(e);
         }
     }
 }
 
 function handleRuleMatch(info) {
-    const { request, rule } = info;
+    const { request } = info;
     api.notifications.create({
         type: "basic",
         iconUrl: "./icons/icon-192.png",
@@ -86,17 +102,15 @@ function handleRuleMatch(info) {
 }
 
 api.runtime.onInstalled.addListener(() => {
-    rebuildRules();
+    rebuildRules().catch(console.error);
 });
 
-// api.storage.onChanged.addListener((changes, area) => {
-//     if (area === "local" && changes.rules) {
-//         rebuildRules();
-//     }
-// });
+if (isFirefox) {
+    rebuildRules().catch(console.error);
+}
 
-api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+api.runtime.onMessage.addListener((msg) => {
     if (msg.type === "rebuild") {
-        rebuildRules();
+        rebuildRules().catch(console.error);
     }
 });

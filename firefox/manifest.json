@@ -8,7 +8,8 @@
     "webRequest",
     "webRequestBlocking",
     "declarativeNetRequest",
-    "declarativeNetRequestFeedback"
+    "declarativeNetRequestFeedback",
+    "notifications"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -18,10 +19,11 @@
   },  
   "options_page": "popup.html",
   "action": {
-      "default_title": "Redirector 3000",
-      "default_popup": "popup.html"
+    "default_title": "Redirector 3000",
+    "default_popup": "popup.html"
   },
   "icons": {
+    "32": "icons/icon-32.png",
     "192": "icons/icon-192.png",
     "512": "icons/icon-512.png"
   }
