@@ -1,6 +1,23 @@
 const api = typeof browser !== "undefined" ? browser : chrome;
 const isFirefox = typeof browser !== "undefined" && typeof browser.runtime?.getBrowserInfo === "function";
 let cachedRules = [];
+const chromeResourceTypes = [
+    "main_frame",
+    "sub_frame",
+    "stylesheet",
+    "script",
+    "image",
+    "font",
+    "object",
+    "xmlhttprequest",
+    "ping",
+    "csp_report",
+    "media",
+    "websocket",
+    "webtransport",
+    "webbundle",
+    "other",
+];
 
 function normalizeRule(rule) {
     return {
@@ -60,7 +77,7 @@ function buildDynamicRule(rule) {
         },
         condition: {
             regexFilter: buildRegexFilter(rule),
-            resourceTypes: ["main_frame", "sub_frame"],
+            resourceTypes: chromeResourceTypes,
         },
     };
 }
