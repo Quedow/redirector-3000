@@ -240,7 +240,6 @@ document.getElementById("import-file").addEventListener("change", async (event) 
         await importRules(file);
     } catch (error) {
         console.error(error);
-        window.alert("Import failed. Use a Redirector 3000 JSON export file.");
     }
 });
 
@@ -264,7 +263,7 @@ document.getElementById("rules-list").addEventListener("click", async (event) =>
         const updates = rules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule);
         await writeRules(updates);
     } else if (btn.classList.contains("remove")) {
-        if (!window.confirm("Delete this rule?")) {
+        if (!window.confirm("Are you sure you want to delete this rule? This action cannot be undone.")) {
             return;
         }
 

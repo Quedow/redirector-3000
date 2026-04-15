@@ -312,6 +312,14 @@
       background: rgba(10, 23, 30, 0.96);
     }
 
+    .state-toggle.tag-paused:hover {
+      border-color: rgba(255, 201, 121, 0.58);
+    }
+
+    .remove.danger:hover {
+      border-color: rgba(255, 141, 118, 0.72);
+    }
+
     .primary {
       background: linear-gradient(135deg, rgba(122, 244, 220, 0.16), rgba(77, 214, 255, 0.18));
       border-color: rgba(122, 244, 220, 0.34);
@@ -568,12 +576,12 @@
           <form id="rule-form" class="field-grid">
             <div>
               <label class="field-label" for="name">Name</label>
-              <input type="text" id="name" placeholder="YouTube to Invidious" required />
+              <input type="text" id="name" placeholder="Rule name" required />
             </div>
 
             <div>
               <label class="field-label" for="input">Input text</label>
-              <input type="text" id="input" placeholder="youtube.com" required />
+              <input type="text" id="input" placeholder="example.com" required />
             </div>
 
             <div class="split">
@@ -595,7 +603,7 @@
 
             <div>
               <label class="field-label" for="output">Output</label>
-              <input type="text" id="output" placeholder="invidious.io" required />
+              <input type="text" id="output" placeholder="localhost" required />
             </div>
 
             <div class="toggle-wrap">
