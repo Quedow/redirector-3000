@@ -19,6 +19,8 @@ const chromeResourceTypes = [
     "other",
 ];
 
+const scheduleRebuild = () => rebuildRules().catch(console.error);
+
 function normalizeRule(rule) {
     return {
         id: rule.id,
@@ -50,19 +52,17 @@ function replaceFirstLiteral(value, input, output) {
 }
 
 function resolveRedirectUrl(url, rule) {
-    const matches = rule.matchType === "equal"
-        ? url === rule.input
-        : url.includes(rule.input);
+    if (rule.matchType === "equal") {
+        return url === rule.input ? rule.output : null;
+    }
 
-    if (!matches) {
+    if (!url.includes(rule.input)) {
         return null;
     }
 
-    if (rule.actionType === "redirect" || rule.matchType === "equal") {
-        return rule.output;
-    }
-
-    return replaceFirstLiteral(url, rule.input, rule.output);
+    return rule.actionType === "redirect"
+        ? rule.output
+        : replaceFirstLiteral(url, rule.input, rule.output);
 }
 
 function buildDynamicRule(rule) {
@@ -109,15 +109,13 @@ function webRequestHandler(details) {
 async function clearDynamicRules() {
     if (!api.declarativeNetRequest) return;
 
-    const existing = await api.declarativeNetRequest.getDynamicRules();
-    const ids = existing.map((rule) => rule.id);
+    const ids = (await api.declarativeNetRequest.getDynamicRules()).map((rule) => rule.id);
+    if (!ids.length) return;
 
-    if (ids.length) {
-        await api.declarativeNetRequest.updateDynamicRules({
-            removeRuleIds: ids,
-            addRules: [],
-        });
-    }
+    await api.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: ids,
+        addRules: [],
+    });
 }
 
 async function rebuildRules() {
@@ -146,9 +144,7 @@ async function rebuildRules() {
         try {
             await clearDynamicRules();
 
-            if (api.webRequest.onBeforeRequest.hasListener(webRequestHandler)) {
-                api.webRequest.onBeforeRequest.removeListener(webRequestHandler);
-            }
+            api.webRequest.onBeforeRequest.removeListener(webRequestHandler);
 
             api.webRequest.onBeforeRequest.addListener(
                 webRequestHandler,
@@ -172,15 +168,15 @@ function handleRuleMatch(info) {
 }
 
 api.runtime.onInstalled.addListener(() => {
-    rebuildRules().catch(console.error);
+    scheduleRebuild();
 });
 
 if (isFirefox) {
-    rebuildRules().catch(console.error);
+    scheduleRebuild();
 }
 
 api.runtime.onMessage.addListener((msg) => {
     if (msg.type === "rebuild") {
-        rebuildRules().catch(console.error);
+        scheduleRebuild();
     }
 });

@@ -2,6 +2,32 @@ const api = typeof browser !== "undefined" ? browser : chrome;
 let editingRuleId = null;
 const openRuleIds = new Set();
 
+const elements = {
+    form: document.getElementById("rule-form"),
+    formTitle: document.getElementById("form-title"),
+    formCopy: document.getElementById("form-copy"),
+    saveButton: document.getElementById("save-button"),
+    cancelEdit: document.getElementById("cancel-edit"),
+    name: document.getElementById("name"),
+    input: document.getElementById("input"),
+    matchType: document.getElementById("match-type"),
+    actionType: document.getElementById("action-type"),
+    output: document.getElementById("output"),
+    enabled: document.getElementById("enabled"),
+    exportData: document.getElementById("export-data"),
+    importData: document.getElementById("import-data"),
+    importFile: document.getElementById("import-file"),
+    rulesList: document.getElementById("rules-list"),
+    ruleCount: document.getElementById("rule-count"),
+    enabledCount: document.getElementById("enabled-count"),
+};
+
+const FORM_DEFAULTS = {
+    matchType: "contains",
+    actionType: "replace",
+    enabled: true,
+};
+
 function generateId() {
     return Math.floor(Math.random() * 1e9);
 }
@@ -22,12 +48,24 @@ function escapeHtml(value) {
     return (value + "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function titleCase(value) {
-    return value.charAt(0).toUpperCase() + value.slice(1);
+function getFormValues() {
+    return {
+        name: elements.name.value.trim(),
+        input: elements.input.value.trim(),
+        matchType: elements.matchType.value,
+        actionType: elements.actionType.value,
+        output: elements.output.value.trim(),
+        enabled: elements.enabled.checked,
+    };
 }
 
-function duplicateName(name) {
-    return name ? `${name} Copy` : "Untitled route Copy";
+function setFormValues(rule) {
+    elements.name.value = rule.name;
+    elements.input.value = rule.input;
+    elements.matchType.value = rule.matchType;
+    elements.actionType.value = rule.actionType;
+    elements.output.value = rule.output;
+    elements.enabled.checked = rule.enabled;
 }
 
 async function readRules() {
@@ -42,37 +80,38 @@ async function writeRules(rules) {
 }
 
 function setFormMode(isEditing) {
-    document.getElementById("form-title").textContent = isEditing ? "Edit rule" : "New rule";
-    document.getElementById("form-copy").textContent = isEditing
+    elements.formTitle.textContent = isEditing ? "Edit rule" : "New rule";
+    elements.formCopy.textContent = isEditing
         ? "Adjust the route and save when ready."
         : "Create a compact URL rule in a few fields.";
-    document.getElementById("save-button").textContent = isEditing ? "Update rule" : "Save rule";
-    document.getElementById("cancel-edit").hidden = !isEditing;
+    elements.saveButton.textContent = isEditing ? "Update rule" : "Save rule";
+    elements.cancelEdit.hidden = !isEditing;
 }
 
 function resetForm() {
     editingRuleId = null;
-    document.getElementById("rule-form").reset();
-    document.getElementById("enabled").checked = true;
-    document.getElementById("match-type").value = "contains";
-    document.getElementById("action-type").value = "replace";
+    elements.form.reset();
+    elements.enabled.checked = FORM_DEFAULTS.enabled;
+    elements.matchType.value = FORM_DEFAULTS.matchType;
+    elements.actionType.value = FORM_DEFAULTS.actionType;
     setFormMode(false);
 }
 
 function renderRule(rule) {
     const stateLabel = rule.enabled ? "Live" : "Paused";
     const stateClass = rule.enabled ? "tag-live" : "tag-paused";
+    const cardClass = rule.enabled ? "rule-card" : "rule-card is-disabled";
     const name = rule.name || "Untitled route";
 
     return `
-        <details class="rule-card ${rule.enabled ? "" : "is-disabled"}" data-id="${rule.id}" ${openRuleIds.has(rule.id) ? "open" : ""}>
+        <details class="${cardClass}" data-id="${rule.id}" ${openRuleIds.has(rule.id) ? "open" : ""}>
             <summary class="rule-summary">
                 <div class="rule-head">
                     <p class="rule-name">${escapeHtml(name)}</p>
                     <div class="rule-tags">
-                        <span class="tag inert-tag">${escapeHtml(titleCase(rule.matchType))}</span>
-                        <span class="tag inert-tag">${escapeHtml(titleCase(rule.actionType))}</span>
-                        <button type="button" data-id="${rule.id}" class="tag tag-state ${stateClass} state-toggle">${stateLabel}</button>
+                        <span class="tag inert-tag">${escapeHtml(rule.matchType)}</span>
+                        <span class="tag inert-tag">${escapeHtml(rule.actionType)}</span>
+                        <button type="button" data-id="${rule.id}" data-action="toggle-state" class="tag tag-state ${stateClass} state-toggle">${stateLabel}</button>
                     </div>
                     <span class="summary-chevron" aria-hidden="true"></span>
                 </div>
@@ -87,32 +126,17 @@ function renderRule(rule) {
                     <code>${escapeHtml(rule.output)}</code>
                 </div>
                 <div class="rule-actions">
-                    <button type="button" data-id="${rule.id}" class="duplicate">Duplicate</button>
-                    <button type="button" data-id="${rule.id}" class="edit">Edit</button>
-                    <button type="button" data-id="${rule.id}" class="remove danger">Delete</button>
+                    <button type="button" data-id="${rule.id}" data-action="duplicate" class="duplicate">Duplicate</button>
+                    <button type="button" data-id="${rule.id}" data-action="edit" class="edit">Edit</button>
+                    <button type="button" data-id="${rule.id}" data-action="remove" class="remove danger">Delete</button>
                 </div>
             </div>
         </details>
     `;
 }
 
-function trackOpenRuleState() {
-    for (const details of document.querySelectorAll("#rules-list .rule-card")) {
-        details.addEventListener("toggle", () => {
-            const id = Number(details.dataset.id);
-            if (!id) return;
-
-            if (details.open) {
-                openRuleIds.add(id);
-            } else {
-                openRuleIds.delete(id);
-            }
-        });
-    }
-}
-
 function normalizeImportedRules(parsed) {
-    const importedRules = Array.isArray(parsed) ? parsed : parsed.rules;
+    const importedRules = Array.isArray(parsed) ? parsed : parsed?.rules;
 
     if (!Array.isArray(importedRules)) {
         throw new Error("Invalid backup format.");
@@ -165,10 +189,13 @@ async function importRules(file) {
     await writeRules([...existingRules, ...safeImportedRules]);
 }
 
+function updateRuleSummary(rules) {
+    elements.ruleCount.textContent = String(rules.length);
+    elements.enabledCount.textContent = String(rules.filter((rule) => rule.enabled).length);
+}
+
 async function load() {
     const rules = await readRules();
-    const rulesList = document.getElementById("rules-list");
-    const enabledCount = rules.filter((rule) => rule.enabled).length;
     const validIds = new Set(rules.map((rule) => rule.id));
 
     for (const id of Array.from(openRuleIds)) {
@@ -177,60 +204,52 @@ async function load() {
         }
     }
 
-    document.getElementById("rule-count").textContent = String(rules.length);
-    document.getElementById("enabled-count").textContent = String(enabledCount);
-
-    if (!rules.length) {
-        rulesList.innerHTML = "";
-        return;
-    }
-
-    rulesList.innerHTML = rules.map(renderRule).join("");
-    trackOpenRuleState();
+    updateRuleSummary(rules);
+    elements.rulesList.innerHTML = rules.map(renderRule).join("");
 }
 
-document.getElementById("rule-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
+elements.rulesList.addEventListener("toggle", (event) => {
+    const details = event.target;
+    if (!(details instanceof Element) || !details.classList.contains("rule-card")) return;
 
-    const name = document.getElementById("name").value.trim();
-    const input = document.getElementById("input").value.trim();
-    const matchType = document.getElementById("match-type").value;
-    const actionType = document.getElementById("action-type").value;
-    const output = document.getElementById("output").value.trim();
-    const enabled = document.getElementById("enabled").checked;
+    const id = Number(details.dataset.id);
+    if (!id) return;
+
+    if (details.hasAttribute("open")) {
+        openRuleIds.add(id);
+    } else {
+        openRuleIds.delete(id);
+    }
+}, true);
+
+elements.form.addEventListener("submit", async (event) => {
+    event.preventDefault();
 
     const nextRule = {
         id: editingRuleId ?? generateId(),
-        name,
-        input,
-        matchType,
-        actionType,
-        output,
-        enabled,
+        ...getFormValues(),
     };
 
     const rules = await readRules();
     const updates = editingRuleId
-        ? rules.map((rule) => rule.id === editingRuleId ? nextRule : rule)
+        ? rules.map((rule) => (rule.id === editingRuleId ? nextRule : rule))
         : [...rules, nextRule];
 
     await writeRules(updates);
     resetForm();
 });
 
-document.getElementById("cancel-edit").addEventListener("click", () => {
-    resetForm();
-});
+elements.cancelEdit.addEventListener("click", resetForm);
 
-document.getElementById("export-data").addEventListener("click", async () => {
+elements.exportData.addEventListener("click", async () => {
     await exportRules();
 });
 
-document.getElementById("import-data").addEventListener("click", () => {
-    document.getElementById("import-file").click();
+elements.importData.addEventListener("click", () => {
+    elements.importFile.click();
 });
 
-document.getElementById("import-file").addEventListener("change", async (event) => {
+elements.importFile.addEventListener("change", async (event) => {
     const [file] = event.target.files;
     event.target.value = "";
 
@@ -243,64 +262,75 @@ document.getElementById("import-file").addEventListener("change", async (event) 
     }
 });
 
-document.getElementById("rules-list").addEventListener("click", async (event) => {
-    const inertChip = event.target.closest(".inert-tag");
+elements.rulesList.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const inertChip = target.closest(".inert-tag");
     if (inertChip) {
         event.preventDefault();
         event.stopPropagation();
         return;
     }
 
-    const btn = event.target.closest("button");
-    if (!btn || !btn.dataset.id) return;
+    const btn = target.closest("button[data-id]");
+    if (!btn) return;
 
     const id = Number(btn.dataset.id);
+    if (!id) return;
+
+    const action = btn.dataset.action;
+    if (!action) return;
+
     const rules = await readRules();
 
-    if (btn.classList.contains("state-toggle")) {
-        event.preventDefault();
-        event.stopPropagation();
-        const updates = rules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule);
-        await writeRules(updates);
-    } else if (btn.classList.contains("remove")) {
-        if (!window.confirm("Are you sure you want to delete this rule? This action cannot be undone.")) {
+    switch (action) {
+        case "toggle-state": {
+            event.preventDefault();
+            event.stopPropagation();
+            const updates = rules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule);
+            await writeRules(updates);
             return;
         }
+        case "remove": {
+            if (!window.confirm("Are you sure you want to delete this rule? This action cannot be undone.")) {
+                return;
+            }
 
-        const updates = rules.filter((rule) => rule.id !== id);
-        openRuleIds.delete(id);
-        await writeRules(updates);
+            openRuleIds.delete(id);
+            await writeRules(rules.filter((rule) => rule.id !== id));
 
-        if (editingRuleId === id) {
-            resetForm();
+            if (editingRuleId === id) {
+                resetForm();
+            }
+            return;
         }
-    } else if (btn.classList.contains("duplicate")) {
-        const sourceRule = rules.find((rule) => rule.id === id);
-        if (!sourceRule) return;
+        case "duplicate": {
+            const sourceRule = rules.find((rule) => rule.id === id);
+            if (!sourceRule) return;
 
-        const duplicateRule = {
-            ...sourceRule,
-            id: generateId(),
-            name: duplicateName(sourceRule.name),
-        };
+            await writeRules([
+                ...rules,
+                {
+                    ...sourceRule,
+                    id: generateId(),
+                    name: sourceRule.name ? `${sourceRule.name} Copy` : "Untitled route Copy",
+                },
+            ]);
+            return;
+        }
+        case "edit": {
+            const rule = rules.find((item) => item.id === id);
+            if (!rule) return;
 
-        await writeRules([...rules, duplicateRule]);
-    } else if (btn.classList.contains("edit")) {
-        const rule = rules.find((item) => item.id === id);
-        if (!rule) return;
-
-        editingRuleId = rule.id;
-        document.getElementById("name").value = rule.name;
-        document.getElementById("input").value = rule.input;
-        document.getElementById("match-type").value = rule.matchType;
-        document.getElementById("action-type").value = rule.actionType;
-        document.getElementById("output").value = rule.output;
-        document.getElementById("enabled").checked = rule.enabled;
-        setFormMode(true);
-        document.getElementById("name").focus();
-        return;
-    } else {
-        return;
+            editingRuleId = rule.id;
+            setFormValues(rule);
+            setFormMode(true);
+            elements.name.focus();
+            return;
+        }
+        default:
+            return;
     }
 });
 

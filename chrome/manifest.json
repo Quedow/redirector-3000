@@ -15,10 +15,10 @@
     "background": {
         "service_worker": "service.js"
     },
-    "options_page": "popup.html",
+    "options_page": "popup.html?view=full",
     "action": {
         "default_title": "Redirector 3000",
-        "default_popup": "popup.html"
+        "default_popup": "popup.html?view=popup"
     },
     "icons": {
         "32": "icons/icon-32.png",

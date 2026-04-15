@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Redirector 3000</title>
   <link rel="icon" type="image/x-icon" href="/icons/favicon.ico">
+  <script src="view-mode.js"></script>
   <style>
     :root {
       color-scheme: dark;
-      --bg: #071218;
       --panel: rgba(10, 23, 30, 0.82);
       --panel-strong: rgba(8, 18, 24, 0.92);
       --line: rgba(111, 244, 224, 0.18);
@@ -17,7 +17,6 @@
       --text: #eafaf4;
       --muted: #90aaa4;
       --accent: #7af4dc;
-      --accent-strong: #4dd6ff;
       --warm: #ffc979;
       --danger: #ff8d76;
       --shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
@@ -43,8 +42,23 @@
         radial-gradient(circle at 80% 15%, rgba(255, 201, 121, 0.12), transparent 24%),
         linear-gradient(180deg, #081117 0%, #061017 50%, #08151a 100%);
       min-width: 900px;
-      position: relative;
       overflow-x: hidden;
+    }
+
+    html[data-view="popup"],
+    html[data-view="popup"] body {
+      width: 600px;
+      height: 450px;
+    }
+
+    html[data-view="popup"] {
+      overflow: hidden;
+    }
+
+    html[data-view="popup"] body {
+      min-width: 600px;
+      min-height: 450px;
+      overflow: hidden;
     }
 
     body::before {
@@ -63,9 +77,13 @@
     }
 
     .app {
-      position: relative;
       min-height: 100vh;
       padding: clamp(18px, 4vw, 36px);
+    }
+
+    html[data-view="popup"] .app {
+      height: 100%;
+      overflow-y: auto;
     }
 
     .shell {
@@ -419,6 +437,7 @@
       color: var(--muted);
       font-size: 0.8rem;
       white-space: nowrap;
+      text-transform: capitalize;
     }
 
     .tag-state {
@@ -440,12 +459,6 @@
       color: var(--warm);
       border-color: rgba(255, 201, 121, 0.24);
       background: rgba(255, 201, 121, 0.12);
-    }
-
-    button.tag {
-      font: inherit;
-      cursor: pointer;
-      padding: 6px 10px;
     }
 
     .summary-chevron {
