@@ -42,7 +42,7 @@
         radial-gradient(circle at top, rgba(77, 214, 255, 0.18), transparent 30%),
         radial-gradient(circle at 80% 15%, rgba(255, 201, 121, 0.12), transparent 24%),
         linear-gradient(180deg, #081117 0%, #061017 50%, #08151a 100%);
-      min-width: 360px;
+      min-width: 900px;
       position: relative;
       overflow-x: hidden;
     }
@@ -330,6 +330,7 @@
       display: flex;
       justify-content: space-between;
       align-items: end;
+      flex-wrap: wrap;
       gap: 16px;
       margin-bottom: 16px;
     }
@@ -337,6 +338,12 @@
     .panel-header p {
       margin: 6px 0 0;
       color: var(--muted);
+    }
+
+    .panel-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .rules-list {
@@ -367,21 +374,31 @@
     .rule-head {
       display: flex;
       justify-content: space-between;
-      align-items: start;
+      align-items: center;
       gap: 12px;
+      min-width: 0;
     }
 
     .rule-name {
       margin: 0;
       font-size: 1.05rem;
       font-weight: 600;
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .rule-tags {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      align-items: center;
       gap: 8px;
-      margin-top: 10px;
+      justify-content: flex-end;
+      margin-left: auto;
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
 
     .tag {
@@ -393,21 +410,39 @@
       border: 1px solid rgba(122, 244, 220, 0.12);
       color: var(--muted);
       font-size: 0.8rem;
+      white-space: nowrap;
     }
 
     .tag-state {
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .inert-tag {
+      cursor: default;
+    }
+
+    .tag-live {
+      color: #8ef7b3;
+      border-color: rgba(142, 247, 179, 0.26);
+      background: rgba(142, 247, 179, 0.12);
+    }
+
+    .tag-paused {
       color: var(--warm);
+      border-color: rgba(255, 201, 121, 0.24);
+      background: rgba(255, 201, 121, 0.12);
     }
 
     button.tag {
       font: inherit;
       cursor: pointer;
+      padding: 6px 10px;
     }
 
     .summary-chevron {
       width: 12px;
       height: 12px;
-      margin-top: 10px;
       border-right: 1.5px solid rgba(122, 244, 220, 0.65);
       border-bottom: 1.5px solid rgba(122, 244, 220, 0.65);
       transform: rotate(45deg);
@@ -459,6 +494,10 @@
     }
 
     @media (max-width: 920px) {
+      body {
+        min-width: 360px;
+      }
+
       .workspace {
         grid-template-columns: 1fr;
       }
@@ -484,13 +523,13 @@
         padding: 18px;
       }
 
-      button {
+      button:not(.tag) {
         width: 100%;
-        justify-content: center;
       }
 
       .rule-actions,
-      .actions {
+      .actions,
+      .panel-tools {
         flex-direction: column;
       }
     }
@@ -584,8 +623,13 @@
               <h2>Saved rules</h2>
               <p>Simple rules, quick edits, no noise.</p>
             </div>
+            <div class="panel-tools">
+              <button type="button" id="export-data">Export</button>
+              <button type="button" id="import-data">Import</button>
+            </div>
           </div>
 
+          <input type="file" id="import-file" accept="application/json" hidden />
           <div id="rules-list" class="rules-list" aria-live="polite"></div>
         </section>
       </section>

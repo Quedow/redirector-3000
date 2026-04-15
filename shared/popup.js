@@ -1,5 +1,6 @@
 const api = typeof browser !== "undefined" ? browser : chrome;
 let editingRuleId = null;
+const openRuleIds = new Set();
 
 function generateId() {
     return Math.floor(Math.random() * 1e9);
@@ -25,6 +26,21 @@ function titleCase(value) {
     return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function duplicateName(name) {
+    return name ? `${name} Copy` : "Untitled route Copy";
+}
+
+async function readRules() {
+    const { rules = [] } = await api.storage.local.get({ rules: [] });
+    return rules.map(normalizeRule);
+}
+
+async function writeRules(rules) {
+    await api.storage.local.set({ rules });
+    api.runtime.sendMessage({ type: "rebuild" });
+    await load();
+}
+
 function setFormMode(isEditing) {
     document.getElementById("form-title").textContent = isEditing ? "Edit rule" : "New rule";
     document.getElementById("form-copy").textContent = isEditing
@@ -45,19 +61,18 @@ function resetForm() {
 
 function renderRule(rule) {
     const stateLabel = rule.enabled ? "Live" : "Paused";
+    const stateClass = rule.enabled ? "tag-live" : "tag-paused";
     const name = rule.name || "Untitled route";
 
     return `
-        <details class="rule-card ${rule.enabled ? "" : "is-disabled"}">
+        <details class="rule-card ${rule.enabled ? "" : "is-disabled"}" data-id="${rule.id}" ${openRuleIds.has(rule.id) ? "open" : ""}>
             <summary class="rule-summary">
                 <div class="rule-head">
-                    <div>
-                        <p class="rule-name">${escapeHtml(name)}</p>
-                        <div class="rule-tags">
-                            <span class="tag">${escapeHtml(titleCase(rule.matchType))}</span>
-                            <span class="tag">${escapeHtml(titleCase(rule.actionType))}</span>
-                            <button type="button" data-id="${rule.id}" class="tag tag-state state-toggle">${stateLabel}</button>
-                        </div>
+                    <p class="rule-name">${escapeHtml(name)}</p>
+                    <div class="rule-tags">
+                        <span class="tag inert-tag">${escapeHtml(titleCase(rule.matchType))}</span>
+                        <span class="tag inert-tag">${escapeHtml(titleCase(rule.actionType))}</span>
+                        <button type="button" data-id="${rule.id}" class="tag tag-state ${stateClass} state-toggle">${stateLabel}</button>
                     </div>
                     <span class="summary-chevron" aria-hidden="true"></span>
                 </div>
@@ -72,6 +87,7 @@ function renderRule(rule) {
                     <code>${escapeHtml(rule.output)}</code>
                 </div>
                 <div class="rule-actions">
+                    <button type="button" data-id="${rule.id}" class="duplicate">Duplicate</button>
                     <button type="button" data-id="${rule.id}" class="edit">Edit</button>
                     <button type="button" data-id="${rule.id}" class="remove danger">Delete</button>
                 </div>
@@ -80,21 +96,97 @@ function renderRule(rule) {
     `;
 }
 
-async function load() {
-    const { rules = [] } = await api.storage.local.get({ rules: [] });
-    const normalizedRules = rules.map(normalizeRule);
-    const rulesList = document.getElementById("rules-list");
-    const enabledCount = normalizedRules.filter((rule) => rule.enabled).length;
+function trackOpenRuleState() {
+    for (const details of document.querySelectorAll("#rules-list .rule-card")) {
+        details.addEventListener("toggle", () => {
+            const id = Number(details.dataset.id);
+            if (!id) return;
 
-    document.getElementById("rule-count").textContent = String(normalizedRules.length);
+            if (details.open) {
+                openRuleIds.add(id);
+            } else {
+                openRuleIds.delete(id);
+            }
+        });
+    }
+}
+
+function normalizeImportedRules(parsed) {
+    const importedRules = Array.isArray(parsed) ? parsed : parsed.rules;
+
+    if (!Array.isArray(importedRules)) {
+        throw new Error("Invalid backup format.");
+    }
+
+    return importedRules.map(normalizeRule);
+}
+
+function assignImportedIds(existingRules, importedRules) {
+    const usedIds = new Set(existingRules.map((rule) => rule.id));
+
+    return importedRules.map((rule) => {
+        let id = rule.id;
+
+        while (!id || usedIds.has(id)) {
+            id = generateId();
+        }
+
+        usedIds.add(id);
+        return { ...rule, id };
+    });
+}
+
+async function exportRules() {
+    const rules = await readRules();
+    const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        rules,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+
+    anchor.href = url;
+    anchor.download = `redirector-3000-${date}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+}
+
+async function importRules(file) {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const existingRules = await readRules();
+    const importedRules = normalizeImportedRules(parsed);
+    const safeImportedRules = assignImportedIds(existingRules, importedRules);
+
+    await writeRules([...existingRules, ...safeImportedRules]);
+}
+
+async function load() {
+    const rules = await readRules();
+    const rulesList = document.getElementById("rules-list");
+    const enabledCount = rules.filter((rule) => rule.enabled).length;
+    const validIds = new Set(rules.map((rule) => rule.id));
+
+    for (const id of Array.from(openRuleIds)) {
+        if (!validIds.has(id)) {
+            openRuleIds.delete(id);
+        }
+    }
+
+    document.getElementById("rule-count").textContent = String(rules.length);
     document.getElementById("enabled-count").textContent = String(enabledCount);
 
-    if (!normalizedRules.length) {
+    if (!rules.length) {
         rulesList.innerHTML = "";
         return;
     }
 
-    rulesList.innerHTML = normalizedRules.map(renderRule).join("");
+    rulesList.innerHTML = rules.map(renderRule).join("");
+    trackOpenRuleState();
 }
 
 document.getElementById("rule-form").addEventListener("submit", async (event) => {
@@ -117,15 +209,12 @@ document.getElementById("rule-form").addEventListener("submit", async (event) =>
         enabled,
     };
 
-    const { rules = [] } = await api.storage.local.get({ rules: [] });
-    const normalizedRules = rules.map(normalizeRule);
+    const rules = await readRules();
     const updates = editingRuleId
-        ? normalizedRules.map((rule) => rule.id === editingRuleId ? nextRule : rule)
-        : [...normalizedRules, nextRule];
+        ? rules.map((rule) => rule.id === editingRuleId ? nextRule : rule)
+        : [...rules, nextRule];
 
-    await api.storage.local.set({ rules: updates });
-    api.runtime.sendMessage({ type: "rebuild" });
-    await load();
+    await writeRules(updates);
     resetForm();
 });
 
@@ -133,27 +222,72 @@ document.getElementById("cancel-edit").addEventListener("click", () => {
     resetForm();
 });
 
+document.getElementById("export-data").addEventListener("click", async () => {
+    await exportRules();
+});
+
+document.getElementById("import-data").addEventListener("click", () => {
+    document.getElementById("import-file").click();
+});
+
+document.getElementById("import-file").addEventListener("change", async (event) => {
+    const [file] = event.target.files;
+    event.target.value = "";
+
+    if (!file) return;
+
+    try {
+        await importRules(file);
+    } catch (error) {
+        console.error(error);
+        window.alert("Import failed. Use a Redirector 3000 JSON export file.");
+    }
+});
+
 document.getElementById("rules-list").addEventListener("click", async (event) => {
+    const inertChip = event.target.closest(".inert-tag");
+    if (inertChip) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+    }
+
     const btn = event.target.closest("button");
     if (!btn || !btn.dataset.id) return;
 
     const id = Number(btn.dataset.id);
-    const { rules = [] } = await api.storage.local.get({ rules: [] });
-    const normalizedRules = rules.map(normalizeRule);
+    const rules = await readRules();
 
     if (btn.classList.contains("state-toggle")) {
         event.preventDefault();
-        const updates = normalizedRules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule);
-        await api.storage.local.set({ rules: updates });
+        event.stopPropagation();
+        const updates = rules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule);
+        await writeRules(updates);
     } else if (btn.classList.contains("remove")) {
-        const updates = normalizedRules.filter((rule) => rule.id !== id);
-        await api.storage.local.set({ rules: updates });
+        if (!window.confirm("Delete this rule?")) {
+            return;
+        }
+
+        const updates = rules.filter((rule) => rule.id !== id);
+        openRuleIds.delete(id);
+        await writeRules(updates);
 
         if (editingRuleId === id) {
             resetForm();
         }
+    } else if (btn.classList.contains("duplicate")) {
+        const sourceRule = rules.find((rule) => rule.id === id);
+        if (!sourceRule) return;
+
+        const duplicateRule = {
+            ...sourceRule,
+            id: generateId(),
+            name: duplicateName(sourceRule.name),
+        };
+
+        await writeRules([...rules, duplicateRule]);
     } else if (btn.classList.contains("edit")) {
-        const rule = normalizedRules.find((item) => item.id === id);
+        const rule = rules.find((item) => item.id === id);
         if (!rule) return;
 
         editingRuleId = rule.id;
@@ -169,9 +303,6 @@ document.getElementById("rules-list").addEventListener("click", async (event) =>
     } else {
         return;
     }
-
-    api.runtime.sendMessage({ type: "rebuild" });
-    await load();
 });
 
 resetForm();
