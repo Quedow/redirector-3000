@@ -143,7 +143,8 @@
       font-size: clamp(2rem, 5vw, 4rem);
       line-height: 0.96;
       font-weight: 600;
-      max-width: 9ch;
+      max-width: none;
+      white-space: nowrap;
     }
 
     .hero p {
@@ -647,6 +648,7 @@
               <p>Simple rules, quick edits, no noise.</p>
             </div>
             <div class="panel-tools">
+              <button type="button" id="toggle-all">Pause all</button>
               <button type="button" id="export-data">Export</button>
               <button type="button" id="import-data">Import</button>
             </div>

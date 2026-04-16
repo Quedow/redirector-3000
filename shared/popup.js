@@ -14,6 +14,7 @@ const elements = {
     actionType: document.getElementById("action-type"),
     output: document.getElementById("output"),
     enabled: document.getElementById("enabled"),
+    toggleAll: document.getElementById("toggle-all"),
     exportData: document.getElementById("export-data"),
     importData: document.getElementById("import-data"),
     importFile: document.getElementById("import-file"),
@@ -192,6 +193,10 @@ async function importRules(file) {
 function updateRuleSummary(rules) {
     elements.ruleCount.textContent = String(rules.length);
     elements.enabledCount.textContent = String(rules.filter((rule) => rule.enabled).length);
+    const anyRules = rules.length > 0;
+    const allDisabled = anyRules && rules.every((rule) => !rule.enabled);
+    elements.toggleAll.textContent = allDisabled ? "Live all" : "Pause all";
+    elements.toggleAll.disabled = !anyRules;
 }
 
 async function load() {
@@ -247,6 +252,14 @@ elements.exportData.addEventListener("click", async () => {
 
 elements.importData.addEventListener("click", () => {
     elements.importFile.click();
+});
+
+elements.toggleAll.addEventListener("click", async () => {
+    const rules = await readRules();
+    if (!rules.length) return;
+
+    const enableAll = rules.every((rule) => !rule.enabled);
+    await writeRules(rules.map((rule) => ({ ...rule, enabled: enableAll })));
 });
 
 elements.importFile.addEventListener("change", async (event) => {
