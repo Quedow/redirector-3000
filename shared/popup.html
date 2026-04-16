@@ -355,7 +355,7 @@
     .panel-header {
       display: flex;
       justify-content: space-between;
-      align-items: end;
+      align-items: center;
       flex-wrap: wrap;
       gap: 16px;
       margin-bottom: 16px;
@@ -368,8 +368,11 @@
 
     .panel-tools {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      align-items: center;
       gap: 8px;
+      margin-left: auto;
+      white-space: nowrap;
     }
 
     .rules-list {
@@ -549,8 +552,7 @@
       }
 
       .rule-actions,
-      .actions,
-      .panel-tools {
+      .actions {
         flex-direction: column;
       }
     }
