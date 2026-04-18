@@ -1,6 +1,15 @@
 const api = typeof browser !== "undefined" ? browser : chrome;
 let editingRuleId = null;
 const openRuleIds = new Set();
+let draggedRuleId = null;
+const {
+    generateId,
+    normalizeImportedRules,
+    assignImportedIds,
+    readRules,
+    writeRules: saveRules,
+} = globalThis.core;
+const layoutAnimations = new WeakMap();
 
 const elements = {
     form: document.getElementById("rule-form"),
@@ -29,22 +38,6 @@ const FORM_DEFAULTS = {
     enabled: true,
 };
 
-function generateId() {
-    return Math.floor(Math.random() * 1e9);
-}
-
-function normalizeRule(rule) {
-    return {
-        id: rule.id,
-        name: rule.name ?? "",
-        input: rule.input ?? rule.pattern ?? "",
-        output: rule.output ?? "",
-        enabled: rule.enabled !== false,
-        actionType: rule.actionType ?? "replace",
-        matchType: rule.matchType ?? "contains",
-    };
-}
-
 function escapeHtml(value) {
     return (value + "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -69,14 +62,8 @@ function setFormValues(rule) {
     elements.enabled.checked = rule.enabled;
 }
 
-async function readRules() {
-    const { rules = [] } = await api.storage.local.get({ rules: [] });
-    return rules.map(normalizeRule);
-}
-
 async function writeRules(rules) {
-    await api.storage.local.set({ rules });
-    api.runtime.sendMessage({ type: "rebuild" });
+    await saveRules(rules);
     await load();
 }
 
@@ -105,7 +92,7 @@ function renderRule(rule) {
     const name = rule.name || "Untitled route";
 
     return `
-        <details class="${cardClass}" data-id="${rule.id}" ${openRuleIds.has(rule.id) ? "open" : ""}>
+        <details class="${cardClass}" data-id="${rule.id}" draggable="true" title="Drag to reorder" ${openRuleIds.has(rule.id) ? "open" : ""}>
             <summary class="rule-summary">
                 <div class="rule-head">
                     <p class="rule-name">${escapeHtml(name)}</p>
@@ -134,31 +121,6 @@ function renderRule(rule) {
             </div>
         </details>
     `;
-}
-
-function normalizeImportedRules(parsed) {
-    const importedRules = Array.isArray(parsed) ? parsed : parsed?.rules;
-
-    if (!Array.isArray(importedRules)) {
-        throw new Error("Invalid backup format.");
-    }
-
-    return importedRules.map(normalizeRule);
-}
-
-function assignImportedIds(existingRules, importedRules) {
-    const usedIds = new Set(existingRules.map((rule) => rule.id));
-
-    return importedRules.map((rule) => {
-        let id = rule.id;
-
-        while (!id || usedIds.has(id)) {
-            id = generateId();
-        }
-
-        usedIds.add(id);
-        return { ...rule, id };
-    });
 }
 
 async function exportRules() {
@@ -213,6 +175,121 @@ async function load() {
     elements.rulesList.innerHTML = rules.map(renderRule).join("");
 }
 
+function getRuleCard(target) {
+    return target instanceof Element ? target.closest(".rule-card[data-id]") : null;
+}
+
+function getRuleCards() {
+    return Array.from(elements.rulesList.querySelectorAll(".rule-card[data-id]"));
+}
+
+function captureRulePositions(excludeId = null) {
+    const excludedId = excludeId == null ? null : String(excludeId);
+    const positions = new Map();
+
+    for (const card of getRuleCards()) {
+        if (excludedId && card.dataset.id === excludedId) continue;
+        positions.set(card.dataset.id, card.getBoundingClientRect());
+    }
+
+    return positions;
+}
+
+function animateRulePositions(previousRects, excludeId = null) {
+    const reduceMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!previousRects?.size || reduceMotion) return;
+
+    const excludedId = excludeId == null ? null : String(excludeId);
+
+    for (const card of getRuleCards()) {
+        if (excludedId && card.dataset.id === excludedId) continue;
+
+        const previousRect = previousRects.get(card.dataset.id);
+        if (!previousRect) continue;
+
+        const nextRect = card.getBoundingClientRect();
+        const deltaX = previousRect.left - nextRect.left;
+        const deltaY = previousRect.top - nextRect.top;
+
+        if (!deltaX && !deltaY) continue;
+        if (typeof card.animate !== "function") continue;
+
+        const previousAnimation = layoutAnimations.get(card);
+        if (previousAnimation) {
+            previousAnimation.cancel();
+        }
+
+        const animation = card.animate(
+            [
+                { transform: `translate(${deltaX}px, ${deltaY}px)` },
+                { transform: "translate(0, 0)" },
+            ],
+            {
+                duration: 180,
+                easing: "cubic-bezier(0.2, 0, 0, 1)",
+            },
+        );
+
+        layoutAnimations.set(card, animation);
+        const clearAnimation = () => {
+            if (layoutAnimations.get(card) === animation) {
+                layoutAnimations.delete(card);
+            }
+        };
+
+        animation.addEventListener("finish", clearAnimation, { once: true });
+        animation.addEventListener("cancel", clearAnimation, { once: true });
+    }
+}
+
+function clearDragState() {
+    draggedRuleId = null;
+    for (const card of getRuleCards()) {
+        card.classList.remove("is-dragging", "is-drop-target");
+        const animation = layoutAnimations.get(card);
+        if (animation) {
+            animation.cancel();
+            layoutAnimations.delete(card);
+        }
+    }
+}
+
+function getRuleOrderFromDom(rules) {
+    const byId = new Map(rules.map((rule) => [String(rule.id), rule]));
+
+    return getRuleCards()
+        .map((card) => byId.get(card.dataset.id))
+        .filter(Boolean);
+}
+
+function setDropTarget(targetCard) {
+    for (const card of getRuleCards()) {
+        card.classList.toggle("is-drop-target", card === targetCard);
+    }
+}
+
+function moveDraggedRuleWithinDom(targetCard, clientY) {
+    const draggedCard = elements.rulesList.querySelector(`.rule-card[data-id="${draggedRuleId}"]`);
+    if (!draggedCard || !targetCard || draggedCard === targetCard) return;
+
+    const rect = targetCard.getBoundingClientRect();
+    const before = clientY < rect.top + rect.height / 2;
+    const shouldMoveBefore = before && targetCard.previousElementSibling !== draggedCard;
+    const shouldMoveAfter = !before && targetCard.nextElementSibling !== draggedCard;
+
+    if (!shouldMoveBefore && !shouldMoveAfter) return;
+
+    const previousRects = captureRulePositions(draggedRuleId);
+
+    if (shouldMoveBefore) {
+        elements.rulesList.insertBefore(draggedCard, targetCard);
+    } else {
+        targetCard.after(draggedCard);
+    }
+
+    animateRulePositions(previousRects, draggedRuleId);
+}
+
 elements.rulesList.addEventListener("toggle", (event) => {
     const details = event.target;
     if (!(details instanceof Element) || !details.classList.contains("rule-card")) return;
@@ -226,6 +303,66 @@ elements.rulesList.addEventListener("toggle", (event) => {
         openRuleIds.delete(id);
     }
 }, true);
+
+elements.rulesList.addEventListener("dragstart", (event) => {
+    const card = getRuleCard(event.target);
+    if (!card) return;
+
+    draggedRuleId = card.dataset.id;
+    card.classList.add("is-dragging");
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", draggedRuleId);
+    }
+});
+
+elements.rulesList.addEventListener("dragover", (event) => {
+    if (!draggedRuleId) return;
+
+    const targetCard = getRuleCard(event.target);
+    const draggedCard = elements.rulesList.querySelector(`.rule-card[data-id="${draggedRuleId}"]`);
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+    }
+
+    if (!draggedCard) return;
+
+    if (targetCard) {
+        setDropTarget(targetCard === draggedCard ? null : targetCard);
+        moveDraggedRuleWithinDom(targetCard, event.clientY);
+        return;
+    }
+
+    setDropTarget(null);
+    elements.rulesList.appendChild(draggedCard);
+});
+
+elements.rulesList.addEventListener("drop", async (event) => {
+    if (!draggedRuleId) return;
+
+    event.preventDefault();
+
+    const rules = await readRules();
+    const nextRules = getRuleOrderFromDom(rules);
+    const orderChanged = nextRules.length === rules.length && nextRules.some((rule, index) => rule.id !== rules[index].id);
+
+    clearDragState();
+
+    if (!orderChanged) {
+        return;
+    }
+
+    await writeRules(nextRules);
+});
+
+elements.rulesList.addEventListener("dragend", () => {
+    if (!draggedRuleId) return;
+
+    clearDragState();
+    load();
+});
 
 elements.form.addEventListener("submit", async (event) => {
     event.preventDefault();

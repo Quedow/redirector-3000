@@ -15,7 +15,7 @@
     "<all_urls>"
   ],
   "background": {
-    "scripts": ["service.js"]
+    "scripts": ["rule-core.js", "rule-engine.js", "service.js"]
   },  
   "options_page": "popup.html?view=full",
   "action": {
